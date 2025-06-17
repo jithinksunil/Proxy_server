@@ -5,9 +5,6 @@ import axios from 'axios';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
-interface RequestWithCookies extends Request {
-  cookies: { [key: string]: string };
-}
 
 @Controller()
 export class AppController {
@@ -17,9 +14,8 @@ export class AppController {
   ) {}
   @All('*')
   async mockAll(@Req() req: Request, @Res() res: Response) {
-    const mockEndpoint = this.configService.get('MOCK_BASE_URL'); // change this as needed
+    const mockEndpoint = this.configService.get('MOCK_BASE_URL');
     const url = `${mockEndpoint}${req.originalUrl}`;
-    console.log(req.originalUrl);
 
     try {
       const forwarded = await firstValueFrom(
@@ -28,13 +24,23 @@ export class AppController {
           method: req.method as any,
           headers: {
             ...req.headers,
-            host: undefined, // Remove 'host' to avoid conflict
+            host: undefined,
           } as any,
           data: req.body,
+          validateStatus: () => true, // prevent axios from throwing on non-2xx
         }),
       );
 
-      return res.status(forwarded.status).json(forwarded.data);
+      // ✅ Set cookies back on response
+      const setCookie = forwarded.headers['set-cookie'];
+      if (setCookie) {
+        res.setHeader('Set-Cookie', setCookie);
+      }
+
+      // Forward other headers if needed
+      // res.set(forwarded.headers); // optional
+
+      return res.status(forwarded.status).send(forwarded.data);
     } catch (err) {
       console.error('Mock proxy error:', err?.response?.data || err.message);
       return res
